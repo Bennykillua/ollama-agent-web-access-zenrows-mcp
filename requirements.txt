@@ -1,0 +1,5 @@
+ollama
+mcp
+python-dotenv
+requests
+ollmcp
