@@ -1,5 +1,5 @@
-ollama
-mcp
+ollama==0.6.2
+mcp==2.1.1
 python-dotenv
 requests
 ollmcp
