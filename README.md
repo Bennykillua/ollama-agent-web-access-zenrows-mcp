@@ -11,7 +11,7 @@ A local Ollama agent that reads live web pages, including bot-protected ones, th
 - Filters invented tool arguments before they reach the MCP server
 
 ## Prerequisites
-- Python 3.10 or later
+- Python 3.11 or later
 - Node.js (the MCP server runs through `npx`)
 - Ollama installed and running, with a tool-capable model such as `qwen3`
 - A Zenrows API key from [app.zenrows.com](https://app.zenrows.com/register)
