@@ -4,17 +4,19 @@ A local Ollama agent that reads live web pages, including bot-protected ones, th
 
 ## Features
 - Connects the Zenrows MCP server to a local Ollama model over STDIO
-- Runs a research agent that fetches and reads protected pages
+- Runs a single-pass agent that fetches and reads protected pages
 - Uses the `extract` tool with Adaptive Stealth Mode for structured JSON output
 - Tests against a Cloudflare-fronted target and a purpose-built antibot challenge page
-- Includes a control script showing what a plain HTTP request returns on the same URL
+- Includes a control script showing what a plain HTTP request returns on the same target
 - Filters invented tool arguments before they reach the MCP server
 
 ## Prerequisites
-- Python 3.11 or later
+- Python 3.11 or later (ollmcp requires it)
 - Node.js (the MCP server runs through `npx`)
 - Ollama installed and running, with a tool-capable model such as `qwen3`
 - A Zenrows API key from [app.zenrows.com](https://app.zenrows.com/register)
+
+Tested with the pinned versions in `requirements.txt` on Python 3.14, against `qwen3:latest`.
 
 ## Installation
 
@@ -63,23 +65,22 @@ ZENROWS_API_KEY=your_api_key
 
 The key is 41 characters: one digit followed by 40 hexadecimal characters. Copy it from your [Zenrows dashboard](https://app.zenrows.com/settings/api-keys).
 
-`zenrows-mcp.json` holds the MCP server configuration used by the ollmcp bridge. Replace the placeholder key before running it:
+`zenrows-mcp.json` holds the MCP server configuration for the ollmcp bridge:
 
 ```json
 {
   "mcpServers": {
     "zenrows": {
-      "command": "npx",
-      "args": ["-y", "@zenrows/mcp"],
-      "env": {
-        "ZENROWS_API_KEY": "YOUR_ZENROWS_API_KEY"
-      }
+      "command": "sh",
+      "args": ["-c", "set -a && . ./.env && set +a && exec npx -y @zenrows/mcp"]
     }
   }
 }
 ```
 
-Both `.env` and `zenrows-mcp.json` are excluded from version control.
+The `sh -c` command sources `.env` into the environment before starting `npx`, so the MCP server reads `ZENROWS_API_KEY` from there. The JSON holds no secret and is committed; `.env` is not, and is excluded in `.gitignore`.
+
+The `.env` path is relative, so run ollmcp from the project root. On Windows, replace the `command` and `args` with an `env` object holding the key directly, and add `zenrows-mcp.json` to `.gitignore`.
 
 ## Project structure
 
@@ -88,15 +89,17 @@ Both `.env` and `zenrows-mcp.json` are excluded from version control.
 ├── agent.py
 ├── cloudflare_site.py
 ├── without_zenrows.py
-├── zenrows-mcp.json.example
+├── check_cloudflare.sh
+├── zenrows-mcp.json
 ├── requirements.txt
 ├── .gitignore
 └── README.md
 ```
 
 - `agent.py` runs the agent against the antibot challenge page
-- `cloudflare_site.py` runs the same loop against a Cloudflare-fronted target
-- `without_zenrows.py` is the control: a plain HTTP request to the same URL
+- `cloudflare_site.py` runs the same loop against a Cloudflare-fronted Indeed search
+- `without_zenrows.py` is the control: a plain HTTP request to the antibot challenge page
+- `check_cloudflare.sh` prints the target's `server` and `date` headers
 
 ## How it works
 
@@ -107,28 +110,34 @@ You ask a question
   ↓
 Ollama picks a tool and its arguments
   ↓
-Zenrows MCP fetches the page through managed proxies and a browser
+Zenrows MCP fetches the page, applying proxies and rendering as needed
   ↓
 The model reads clean content from its context and answers
 ```
 
-Ollama returns tool calls but does not execute them. The script calls the MCP server, feeds the result back as a `tool` message, and asks the model again.
+Ollama returns tool calls but does not execute them. The script calls the MCP server, feeds the result back as a `tool` message, and asks the model again. This is a single retrieval pass, which is what the example questions need.
 
 ## Running the project
 
-Verify the MCP connection first:
+Check what is in front of the target:
+
+```bash
+sh check_cloudflare.sh
+```
+
+Verify the MCP connection:
 
 ```bash
 ollmcp --servers-json zenrows-mcp.json --model qwen3:latest
 ```
 
-Then run the agent:
+Confirm `zenrows.extract` appears in the tool list, then run the agent:
 
 ```bash
 python agent.py
 ```
 
-The Cloudflare target:
+The Cloudflare-fronted target:
 
 ```bash
 python cloudflare_site.py
@@ -142,9 +151,9 @@ python without_zenrows.py
 
 ## Output
 
-`agent.py` prints the tool call, the first 300 characters of the tool result, and the model's answer. The result is structured JSON with an `ok` flag, the extraction mode, and a `data` object holding the fields.
+`agent.py` and `cloudflare_site.py` print the tool call, the first 300 characters of the tool result, and the model's answer. The result is structured JSON with an `ok` flag, the extraction mode, a `fellBackToAutoparse` flag, and a `data` object holding the parsed fields.
 
-`without_zenrows.py` prints a status code and response length. On a protected target it returns 403 and a challenge page rather than content.
+`without_zenrows.py` prints a status code and response length. On the tested target it returned 403 and a challenge page rather than content.
 
 ## Technologies
 - Python
@@ -153,9 +162,8 @@ python without_zenrows.py
 - Model Context Protocol
 - ollmcp
 
-
 ## Related article
 
 This repository accompanies the Zenrows article:
 
-[How to Give Ollama Agents Live Web Access with Zenrows MCP]()
+[How to Give Ollama Agents Live Web Access with Zenrows MCP](https://www.zenrows.com/blog/how-to-give-ollama-agents-live-web-access-with-zenrows-mcp)
